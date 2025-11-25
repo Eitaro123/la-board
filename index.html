@@ -443,9 +443,15 @@
             modalSelect.innerHTML = '<option value="" disabled selected>名前を選択...</option>';
 
             let activeCount = 0;
+            
+            // ソート: 自分優先 > 在室優先 > ID順
             const sortedMembers = [...membersData].sort((a, b) => {
-                const aAct = a.status !== 'absent', bAct = b.status !== 'absent';
-                return aAct === bAct ? a.id - b.id : bAct - aAct;
+                if (a.id === myId) return -1;
+                if (b.id === myId) return 1;
+                const aAct = a.status !== 'absent';
+                const bAct = b.status !== 'absent';
+                if (aAct !== bAct) return bAct - aAct;
+                return a.id - b.id;
             });
 
             sortedMembers.forEach(member => {
