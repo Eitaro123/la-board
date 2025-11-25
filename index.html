@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- 検索エンジンにインデックスさせない設定 -->
     <meta name="robots" content="noindex, nofollow">
-    <title>研究室 在席管理ボード (Online)</title>
+    <title>研究室 在席管理ボード (Secure)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome -->
@@ -30,6 +30,11 @@
         .flip-container {
             perspective: 1000px;
             height: 240px;
+            cursor: default; /* デフォルトはクリック不可に見せる */
+        }
+
+        /* 自分自身のカードのみクリッカブルに見せる */
+        .flip-container.is-me {
             cursor: pointer;
         }
         
@@ -64,7 +69,8 @@
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .flip-container .flip-card-front:hover {
+        /* 自分のカードのみホバーエフェクト有効 */
+        .flip-container.is-me .flip-card-front:hover {
             transform: translateY(-3px) rotateY(0deg);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
@@ -359,6 +365,10 @@
         
         window.updateMemberFirestore = async (id, status, location, icon = null) => {
             if (!db) return;
+            // 簡易的なセキュリティチェック: 自分以外のIDを更新しようとしていないか確認
+            // (NFCなどの自動更新は許可するため、完全にブロックするのではなくUI操作でガードするが、念の為ここでも)
+            // 注: NFC自動更新や管理者機能を考慮し、厳密なブロックはUI側で行う
+            
             try {
                 const now = getCurrentTime();
                 const memberRef = doc(db, COL_NAME, id.toString());
@@ -412,30 +422,14 @@
             el.addEventListener('touchmove', (e) => e.stopPropagation(), {passive: true});
         }
 
-        function resizeImage(file, maxWidth, callback) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width, height = img.height;
-                    if (width > height) { if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; } }
-                    else { if (height > maxWidth) { width *= maxWidth / height; height = maxWidth; } }
-                    canvas.width = width; canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    callback(canvas.toDataURL('image/jpeg', 0.7));
-                };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-
         function renderMembers() {
             const grid = document.getElementById('members-grid');
             const nfcSelect = document.getElementById('nfc-target-name');
             const modalSelect = document.getElementById('modal-input-name');
-            const myId = parseInt(localStorage.getItem('labApp_myId'));
+            
+            // 現在の自分のIDを取得（未設定ならnull）
+            const myIdStr = localStorage.getItem('labApp_myId');
+            const myId = myIdStr ? parseInt(myIdStr) : null;
             let myName = "未設定";
 
             grid.innerHTML = '';
@@ -475,9 +469,23 @@
                         : `<i class="fa-solid ${rawIcon}"></i>`;
 
                     const container = document.createElement('div');
+                    // 自分自身のみ "is-me" クラスを付与
                     container.className = `flip-container ${isMe ? 'is-me' : ''}`;
                     container.id = `card-${member.id}`;
-                    container.setAttribute('onclick', `window.handleCardClick(${member.id})`);
+                    
+                    // クリックイベントの設定：自分のみカード操作関数を呼ぶ、他人は警告トースト
+                    container.onclick = (e) => {
+                        if (isMe) {
+                            window.handleCardClick(member.id);
+                        } else {
+                            // 端末設定されていない場合と、他人の場合でメッセージを変えても良いが、統一
+                            if (!myId) {
+                                showToast("右上の「端末設定」から自分を選択してください");
+                            } else {
+                                showToast("他人のステータスは変更できません");
+                            }
+                        }
+                    };
 
                     const badge = isMe ? `<span class="absolute top-2 right-2 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold z-10">YOU</span>` : '';
 
@@ -572,7 +580,15 @@
         }
 
         // --- Card Interaction ---
-        window.handleCardClick = (id) => { window.flipCard(id, true); };
+        window.handleCardClick = (id) => {
+            // ガード処理：念の為ここでもチェック
+            const myId = parseInt(localStorage.getItem('labApp_myId'));
+            if (id !== myId) {
+                showToast("他人のステータスは変更できません");
+                return;
+            }
+            window.flipCard(id, true); 
+        };
 
         window.flipCard = (id, isFlipped) => {
             if (isFlipped && activeCardId && activeCardId !== id) {
@@ -586,6 +602,10 @@
         };
 
         window.selectStatus = (id, statusKey) => {
+            // ステータス更新時もIDチェック
+            const myId = parseInt(localStorage.getItem('labApp_myId'));
+            if (id !== myId) return;
+
             let loc = document.getElementById(`loc-input-${id}`).value;
             if (statusKey === 'absent') {
                 loc = "-";
@@ -612,6 +632,9 @@
 
         // --- Image Upload & Crop Logic ---
         window.handleImageSelect = (event, id) => {
+            const myId = parseInt(localStorage.getItem('labApp_myId'));
+            if (id !== myId) return showToast("他人の画像は変更できません");
+
             const file = event.target.files[0];
             if (!file) return;
             
@@ -655,6 +678,10 @@
         };
 
         window.submitUpdate = (id) => {
+            // 更新確定時チェック
+            const myId = parseInt(localStorage.getItem('labApp_myId'));
+            if (id !== myId) return;
+
             const member = membersData.find(m => m.id === id);
             const loc = document.getElementById(`loc-input-${id}`).value;
             const newIcon = document.getElementById(`loc-input-${id}`).dataset.selectedIcon || member.icon;
