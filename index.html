@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>研究室 在席管理ボード (管理機能付)</title>
+    <title>研究室 在席管理ボード (休憩ステータス追加版)</title>
 
     <link rel="apple-touch-icon" href="images/icon.png">
-
-    <link rel="icon" href="images/icon.png">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -28,6 +26,8 @@
         .status-experiment-bg { background-color: #fef9c3; color: #854d0e; border-left-color: #eab308; }
         .status-class-bg { background-color: #dbeafe; color: #1e40af; border-left-color: #3b82f6; }
         .status-meeting-bg { background-color: #f3e8ff; color: #6b21a8; border-left-color: #a855f7; }
+        /* 追加: 休憩ステータス (オレンジ系) */
+        .status-break-bg { background-color: #ffedd5; color: #9a3412; border-left-color: #f97316; }
         .status-absent-bg { background-color: #f8fafc; color: #64748b; border-left-color: #94a3b8; }
 
         /* 3Dフリップアニメーション */
@@ -145,6 +145,7 @@
                                     <select id="nfc-preset-location" class="w-full border border-indigo-200 rounded p-2 text-sm bg-white">
                                         <option value="present:407">🏢 407 に到着 (在室)</option>
                                         <option value="present:教授室">🗣️ 教授室 に到着 (在室)</option>
+                                        <option value="break:ラウンジ">☕ 休憩 (在室)</option>
                                         <option value="absent:-">🏠 帰宅する (不在)</option>
                                     </select>
                                 </div>
@@ -322,11 +323,15 @@
             "fa-user", "fa-user-graduate", "fa-user-tie", "fa-cat", "fa-dog", "fa-dragon",
             "fa-robot", "fa-ghost", "fa-mug-hot", "fa-bicycle", "fa-gamepad", "fa-futbol", "fa-book"
         ];
+        
+        // ステータス設定に追加：break
         const statusConfig = {
             present:    { label: "在室", icon: "fa-laptop", cssClass: "status-present-bg", btnColor: "bg-green-100 text-green-700 hover:bg-green-200" },
             experiment: { label: "実験", icon: "fa-flask", cssClass: "status-experiment-bg", btnColor: "bg-yellow-100 text-yellow-700 hover:bg-yellow-200" },
             class:      { label: "授業", icon: "fa-book-open", cssClass: "status-class-bg", btnColor: "bg-blue-100 text-blue-700 hover:bg-blue-200" },
             meeting:    { label: "会議", icon: "fa-users", cssClass: "status-meeting-bg", btnColor: "bg-purple-100 text-purple-700 hover:bg-purple-200" },
+            // NEW: 休憩ステータス
+            break:      { label: "休憩", icon: "fa-mug-hot", cssClass: "status-break-bg", btnColor: "bg-orange-100 text-orange-700 hover:bg-orange-200" },
             absent:     { label: "帰宅", icon: "fa-house", cssClass: "status-absent-bg", btnColor: "bg-slate-100 text-slate-600 hover:bg-slate-200" }
         };
 
@@ -570,11 +575,23 @@
 
         window.selectStatus = (id, statusKey) => {
             let loc = document.getElementById(`loc-input-${id}`).value;
-            if (statusKey === 'absent') loc = "-";
-            else if (!loc || ['-','研究室','実験室','講義棟','学内'].includes(loc)) {
-                const map = {present:'研究室', experiment:'実験室', class:'講義棟', meeting:'学内', break:'学内'};
+            // プリセットの場所名
+            const map = {
+                present: '研究室', 
+                experiment: '実験室', 
+                class: '講義棟', 
+                meeting: '学内', 
+                break: '研究室' // 休憩時のデフォルト
+            };
+            const defaultLocations = Object.values(map).concat(['-','学内']);
+
+            if (statusKey === 'absent') {
+                loc = "-";
+            } else if (!loc || defaultLocations.includes(loc)) {
+                // 場所が空、またはデフォルト系の場所が入っている場合は、ステータスに合わせて書き換え
                 loc = map[statusKey] || '学内';
             }
+            
             document.getElementById(`loc-input-${id}`).value = loc;
             window.updateMemberFirestore(id, statusKey, loc).then(res => res && window.flipCard(id, false));
         };
